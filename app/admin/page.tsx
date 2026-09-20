@@ -13,6 +13,11 @@ interface Mod {
 }
 
 export default function AdminPage() {
+  // --- GÜVENLİK VE GİRİŞ STATE'LERİ ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
   const [mods, setMods] = useState<Mod[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -34,6 +39,14 @@ export default function AdminPage() {
   const [editDescription, setEditDescription] = useState('');
   const [editImageUrl, setEditImageUrl] = useState('');
 
+  // Oturum durumunu kontrol et
+  useEffect(() => {
+    const auth = sessionStorage.getItem('admin_auth');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   // Modları veritabanından çekme fonksiyonu
   const fetchMods = async () => {
     const { data, error } = await supabase
@@ -44,7 +57,6 @@ export default function AdminPage() {
     if (!error && data) {
       setMods(data);
       
-      // Seçili ID listede hâlâ geçerli mi kontrol et, değilse geçerli ilk modu seç
       setSelectedModId((prevId) => {
         const stillExists = data.some((m) => m.id === prevId);
         if (stillExists) return prevId;
@@ -54,8 +66,39 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    fetchMods();
-  }, []);
+    if (isAuthenticated) {
+      fetchMods();
+    }
+  }, [isAuthenticated]);
+
+  // GÜVENLİ GİRİŞ İŞLEMİ (Sunucu üzerinden doğrulama)
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+
+    try {
+      const res = await fetch('/api/admin-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput }),
+      });
+
+      if (res.ok) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('admin_auth', 'true');
+      } else {
+        setAuthError('Hatalı şifre! Lütfen tekrar deneyin.');
+      }
+    } catch (err) {
+      setAuthError('Giriş yapılırken bir hata oluştu.');
+    }
+  };
+
+  // Çıkış Yapma İşlemi
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_auth');
+    setIsAuthenticated(false);
+  };
 
   // Otomatik Slug Oluşturucu
   const createSlug = (text: string) => {
@@ -66,7 +109,7 @@ export default function AdminPage() {
       .replace(/-+/g, '-');
   };
 
-  // Yeni Mod Ekleme İşlemi
+  // Yeni Mod Ekleme
   const handleCreateMod = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -90,7 +133,7 @@ export default function AdminPage() {
     }
   };
 
-  // Sürüm Ekleme İşlemi
+  // Sürüm Ekleme
   const handleCreateVersion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedModId) {
@@ -121,17 +164,14 @@ export default function AdminPage() {
     }
   };
 
-  // Mod Silme İşlemi
+  // Mod Silme
   const handleDeleteMod = async (id: string, modTitle: string) => {
     if (!confirm(`"${modTitle}" modunu silmek istediğinize emin misiniz?`)) return;
 
     setLoading(true);
     setMessage('');
 
-    // Önce bağlı sürümleri temizleyelim
     await supabase.from('mod_versions').delete().eq('mod_id', id);
-
-    // Ardından modu silelim
     const { error } = await supabase.from('mods').delete().eq('id', id);
 
     setLoading(false);
@@ -146,7 +186,7 @@ export default function AdminPage() {
     }
   };
 
-  // Düzenleme Modunu Başlatma
+  // Düzenleme Başlat
   const handleStartEdit = (mod: Mod) => {
     setEditingMod(mod);
     setEditTitle(mod.title);
@@ -154,7 +194,7 @@ export default function AdminPage() {
     setEditImageUrl(mod.image_url || '');
   };
 
-  // Mod Güncelleme İşlemi
+  // Mod Güncelle
   const handleUpdateMod = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMod) return;
@@ -184,12 +224,60 @@ export default function AdminPage() {
     }
   };
 
+  // --- KİLİT EKRANI ---
+  if (!isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-6">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 max-w-md w-full space-y-6 shadow-2xl">
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-bold text-emerald-400">🔒 Admin Paneli Kilitli</h1>
+            <p className="text-gray-400 text-sm">Devam etmek için yönetici şifrenizi girin.</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                placeholder="Yönetici Şifresi"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            {authError && (
+              <p className="text-red-400 text-sm text-center bg-red-900/30 p-2 rounded border border-red-800">
+                {authError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 font-bold py-2 rounded transition"
+            >
+              Giriş Yap
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
+  // --- ADMİN PANELİ ---
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-12">
       <div className="max-w-5xl mx-auto space-y-10">
-        <h1 className="text-3xl font-extrabold text-emerald-400 border-b border-gray-800 pb-4">
-          Admin Yönetim Paneli
-        </h1>
+        <div className="flex justify-between items-center border-b border-gray-800 pb-4">
+          <h1 className="text-3xl font-extrabold text-emerald-400">
+            Admin Yönetim Paneli
+          </h1>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-800 rounded text-sm font-bold transition"
+          >
+            Çıkış Yap 🔒
+          </button>
+        </div>
 
         {message && (
           <div className="p-4 bg-emerald-900/50 border border-emerald-500 rounded text-emerald-200 text-sm">
@@ -305,7 +393,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* 3. Düzenleme Alanı (Bir mod düzenlenirken görünür) */}
+        {/* 3. Düzenleme Alanı */}
         {editingMod && (
           <div className="bg-gray-900 border-2 border-amber-500 rounded-xl p-6 space-y-4">
             <div className="flex justify-between items-center">
@@ -369,7 +457,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* 4. Eklenmiş Modlar Listesi (Silme ve Düzenleme Butonları ile) */}
+        {/* 4. Eklenmiş Modlar Listesi */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
           <h2 className="text-xl font-bold text-gray-200">Yayınlanmış Modlar ({mods.length})</h2>
           {mods.length === 0 ? (
