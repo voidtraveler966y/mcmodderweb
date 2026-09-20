@@ -4,14 +4,14 @@ export async function POST(req: Request) {
   try {
     const { password } = await req.json();
 
-    // Şifre sadece Netlify/sunucu ortam değişkeninden okunur.
-    // Kod içinde varsayılan şifre tutulmaz (GitHub'da görünmemesi için).
+    // Şifre SADECE Netlify ortam değişkeninden okunur.
+    // Kod içinde hiçbir varsayılan/yedek şifre kalmadı.
     const REAL_PASSWORD = process.env.ADMIN_PASSWORD;
 
-    // Netlify'da ADMIN_PASSWORD tanımlanmadıysa güvenlik için erişimi engelle
+    // Eğer Netlify'da ADMIN_PASSWORD tanımlanmadıysa veya okunamadıysa erişimi tamamen kapat
     if (!REAL_PASSWORD) {
       return NextResponse.json(
-        { success: false, message: 'Sunucuda ADMIN_PASSWORD değişkeni ayarlanmamış.' },
+        { success: false, message: 'Sunucuda şifre ayarlanmamış.' },
         { status: 500 }
       );
     }
